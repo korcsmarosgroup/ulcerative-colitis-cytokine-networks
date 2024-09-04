@@ -8,15 +8,15 @@ The `codes` folder contains two subdirectories: `codes/ data_processing` refers 
 ## Data Processing
 Brief description of main data processing scripts:
 ### `process_scibd.R`: 
-- **Input**: scIBD data downloaded from scibd.cn, in `.rds` format. 
+- **Input**: Pre-processed single-cell RNA-Seq data downloaded from [scibd.cn](http://scibd.cn/), in `.rds` format. 
 - **Task**: Separates the analysed sample groups (inflamed-treated, inflamed-naive, noninflamed-treated, healthy) into corresponding .rds files using metadata from the original publications included in scIBD. 
 - **Output**: State-specific `.rds.` files
 
 ### `generate_models.R`: 
-- **Input**: State-specific `.rds` files; nichenet prior model; geneset of interest (list of cytokines)
+- **Input**: State-specific `.rds` files; nichenet prior models; geneset of interest (list of cytokines)
 - **Task**: Generation of cytokine-cytokine interactions using nichenet for each state
 - **Output**: Non-validated cytokine networks
-- **Uses**: `iteratecells.R`: function containing the individual steps of the nichenet analysis, gets called by generate_models.R
+- **Uses**: `iteratecells.R`: function containing the individual steps of the nichenet analysis, gets called by `generate_models.R`
 
 ### `nichenet_validation.R`: 
 - **Input**: Non-validated cytokine networks
