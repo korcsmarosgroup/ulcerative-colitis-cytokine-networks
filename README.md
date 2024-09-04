@@ -15,10 +15,10 @@ Brief description of main data processing scripts:
 ### `generate_models.R`: 
 - **Input**: State-specific `.rds` files; nichenet prior models; geneset of interest (list of cytokines)
 - **Task**: Generation of cytokine-cytokine interactions using nichenet for each state
-- **Output**: Non-validated cytokine networks
+- **Output**: Cytokine networks
 - **Uses**: `iteratecells.R`: function containing the individual steps of the nichenet analysis, gets called by `generate_models.R`
 
 ### `nichenet_validation.R`: 
-- **Input**: Non-validated cytokine networks
+- **Input**: Cytokine networks
 - **Task**: Nichenet's target prediction evaluation pipeline using a multi-ligand random forest model with cross validation. Target downstream cytokines from the gene set of interest are kept if they are well predicted in every cross-validation round
 - **Output**: Validated cytokine networks
