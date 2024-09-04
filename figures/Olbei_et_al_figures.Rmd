@@ -27,9 +27,9 @@ comp<-readRDS('../rds/cci_n.rds') |> bind_rows()
 The plots aren't necessary in the same order as they appear in the manuscript, but rather how they were generated.
 
 ```{r}
-# using the Cui et al supplementary data to validate cytokine networks
+# using the Cui et al supplementary data to validate cytokine networks: https://static-content.springer.com/esm/art%3A10.1038%2Fs41586-023-06816-9/MediaObjects/41586_2023_6816_MOESM5_ESM.xlsx
 cklcyts <- c(comp$source, comp$target) |> unique()
-cyts <- read_tsv('../cytokine_list.tsv', col_names = F) |> pull(X1) |> unique()
+
 #S3 from supplementary files of Cui et al
 library(readxl)    
 path <- "41586_2023_6816_MOESM5_ESM.xlsx"
@@ -171,6 +171,7 @@ ggplot(sigres_name_fix,aes(x=cytokine, y=factor(disease_state, level = state_ord
   ylab('Cytokine')+
   labs(fill = 'FDR', size = 'Jaccard-index')+ theme(legend.text=element_text(size=8))
 ```
+
 ```{r, echo=FALSE}
 # Figure 2B: organoid comparison
 all_celltypes<- c(inf$source_cell, inf$target_cell) |> unique()
@@ -278,7 +279,7 @@ degplot
 ```{r}
 # Fig2A
 
-#fold change calculation
+# edge weight fold change calculation
 cc_wide <- comp |> 
   dplyr::select(source, target, state, weight) |>
   pivot_wider(names_from = state, values_from = c(weight)) |>
@@ -404,6 +405,7 @@ ks_treated <- trt |> filter(state == 'UC_inflamed_treated') |> pull(Jaccard)
 wilcox.test(ks_naive,ks_treated)
 trt |> group_by(state) |> summarise(medjac = median(Jaccard))
 ```
+
 ```{r}
 # Fig 2B
 naive <- comp |> filter(state == 'UC_inflamed_naive')
@@ -524,6 +526,8 @@ top_naive_nodes_plot_out
 
 ```{r}
 #Fig4B
+# rewiring values were created using the DyNet Cytoscape app, using multiple comparison mode. Node rewiring results were exported to structural_rewiring.csv
+
 dncyt<-read_csv('structural_rewiring.csv') |> dplyr::rename(Dn = `DyNet Rewiring (Dn-score)`,Dnc = `Dn-Score (degree corrected)`, degree = `Edge Count`) |> filter(cc_h_weighted.tsv_present == TRUE & cc_uc_inf_weighted.tsv_present == TRUE & cc_uc_naive_weighted.tsv_present == TRUE & cc_uc_ninf_weighted.tsv_present == TRUE) %>% mutate(name = case_when(
   name == 'TNFSF15' ~ 'TL1A',
   TRUE ~ as.character(name)
@@ -566,6 +570,7 @@ rewdist<-dncyt |> mutate(labelname = case_when(name %in% topnames ~ as.character
     theme_hc(base_size = 22)+xlab('Cytokines')+ylab('Rewiring score (degree corrected)')
 rewdist
 ```
+
 ```{r}
 #Fig5A
 jaki <- read_tsv('cci_jak10_stat.tsv') |> dplyr::rename(JAK1 = jk1, JAK2 = jk2, JAK3 = jk3, TYK2 = tk2)
@@ -594,6 +599,7 @@ jak_protein_usage_plot<-ggplot(jak_protein_usage, aes(x=jaks, y=n, fill=jak)) +
   ylab('Number of JAK proteins')+ guides(fill=guide_legend(title="JAK"))
 jak_protein_usage_plot
 ```
+
 ```{r}
 #Fig5B
 IL2_family_members<- c('IL2','IL7','IL15','TSLP')
@@ -713,7 +719,7 @@ jaktable
 
 ```{r}
 #Fig5C
-#rewiring values calculated in cytoscape following the removal of interactions predicted to be signalling through each JAK paralogue
+#rewiring values calculated in cytoscape following the removal of interactions from the UC naive network predicted to be signalling through each JAK paralogue 
 
 rew_jk1 <- read_csv('jak1_rewiring.csv')|> dplyr::select(name, `DyNet Rewiring (Dn-score)`, `Edge Count`) |> dplyr::rename(Dn = `DyNet Rewiring (Dn-score)`, degree = `Edge Count`)
 rew_jk1$state <-'JAK1 inhibited'
@@ -738,6 +744,7 @@ jakrew<-ggplot(rew_jak, aes(x = reorder(name, Dn), y = Dn, fill = state)) +
   theme_hc(base_size = 18)
 jakrew
 ```
+
 ```{r}
 library(ggpubr)
 # OT data downloaded from website
@@ -771,7 +778,7 @@ degscorecorr<-net_ot |> mutate(labelname = case_when(
 degscorecorr
 
 
-#top onteragets score cytokines
+#top opentargets score cytokines
 net_ot_plot<-net_ot|> arrange(-globalScore) |> head(10) |> mutate(drugstatus = case_when(
   name == 'TNF' ~ 'UC drug exists',
   name == 'IL23A' ~ 'UC drug exists',
@@ -885,10 +892,6 @@ autocrine_ridge<-ggplot(autocrine, aes(x = autocrine_count....count , y = state)
   coord_cartesian(clip = "off") + # to avoid clipping of the very top of the top ridgeline
   theme_ridges(grid = FALSE)+xlab('Overlapping source and target cell types in cytokine-cytokine interactions')
 autocrine_ridge
-# ratios:
-# naive = 141/443 = 0.31 == 69
-# treated = 107/321 = 0.33 == 67
-# noninflamed_treated = 115/358=0.32 == 68
-# healthy = 102/376 = 0.27 == 73
+
 ```
 
