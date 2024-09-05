@@ -21,7 +21,7 @@ library(ggrepel)
 library(rstatix)
 library(ggthemes)
 #load networks
-comp<-readRDS('../rds/cci_n.rds') |> bind_rows() 
+comp<-readRDS('cci_n.rds') |> bind_rows() 
 ```
 
 The plots aren't necessary in the same order as they appear in the manuscript, but rather how they were generated.
@@ -572,6 +572,67 @@ rewdist
 ```
 
 ```{r}
+# load nichenet model
+ligand_target_matrix <- readRDS("ligand_target_matrix_nsga2r_final.rds")
+weighted_networks <- readRDS("rds/weighted_networks_nsga2r_final.rds")
+ligand_tf_matrix <- readRDS("ligand_tf_matrix_nsga2r_final.rds")
+# nichenet interactions from omnipath
+networks <- readRDS("OP_nichenet_networks.RDS")
+lr_network <- networks$lr_network %>% dplyr::filter(from %in% colnames(ligand_target_matrix))
+lr_network <- dplyr::rename(lr_network, ligand = from, receptor = to)
+sig_network <- networks$signaling_network
+gr_network <- networks$gr_network
+## geneset of interest == cytokines
+geneset_oi <-  c(comp$source, comp$target) |> unique()
+testcci <- comp |>
+  dplyr::filter(state == "UC_inflamed_naive")
+
+results <- list()
+for (row in 1:nrow(testcci)){
+src <- testcci[row, 'source']
+trg <- testcci[row, 'target']
+
+ligands_all <- src 
+targets_all <- c(paste0(trg))
+
+active_signaling_network <- get_ligand_signaling_path(
+  ligand_tf_matrix = ligand_tf_matrix,
+  ligands_all = ligands_all,
+  targets_all = targets_all,
+  weighted_networks = weighted_networks,
+  top_n_regulators = 10
+)
+
+el <- rbind(active_signaling_network$sig, active_signaling_network$gr) |> dplyr::select(from, to) |> distinct()
+
+jk1 <- ('JAK1' %in% el$from | 'JAK1' %in% el$to) |> as.logical() |> as.integer()
+jk2 <- ('JAK2' %in% el$from | 'JAK2' %in% el$to) |> as.logical() |> as.integer()
+jk3 <- ('JAK3' %in% el$from | 'JAK3' %in% el$to) |> as.logical() |> as.integer()
+tk2 <- ('TYK2' %in% el$from | 'TYK2' %in% el$to) |> as.logical() |> as.integer()
+jk1 <- ('JAK1' %in% el$from | 'JAK1' %in% el$to) |> as.logical() |> as.integer()
+jk2 <- ('JAK2' %in% el$from | 'JAK2' %in% el$to) |> as.logical() |> as.integer()
+jk3 <- ('JAK3' %in% el$from | 'JAK3' %in% el$to) |> as.logical() |> as.integer()
+tk2 <- ('TYK2' %in% el$from | 'TYK2' %in% el$to) |> as.logical() |> as.integer()
+#STAT1, STAT2, STAT3, STAT4, STAT5A, STAT5B and STAT6
+st1<- ('STAT1' %in% el$from | 'STAT1' %in% el$to) |> as.logical() |> as.integer()
+st2<- ('STAT2' %in% el$from | 'STAT2' %in% el$to) |> as.logical() |> as.integer()
+st3<- ('STAT3' %in% el$from | 'STAT3' %in% el$to) |> as.logical() |> as.integer()
+st4<- ('STAT4' %in% el$from | 'STAT4' %in% el$to) |> as.logical() |> as.integer()
+st5a<- ('STAT5a' %in% el$from | 'STAT5a' %in% el$to) |> as.logical() |> as.integer()
+st5b<- ('STAT5b' %in% el$from | 'STAT5b' %in% el$to) |> as.logical() |> as.integer()
+st6<- ('STAT6' %in% el$from | 'STAT6' %in% el$to) |> as.logical() |> as.integer()
+
+outdf <- data.frame(src,trg,jk1,jk2,jk3,tk2,st1,st2,st3,st4,st5a,st5b,st6) |> tibble()
+results[[paste0(src, '_',trg)]] <- outdf
+}
+
+jaknet<-bind_rows(results)
+jaknet$jaks <- rowSums( jaknet[,3:6] )
+
+write_tsv(jaknet, 'cci_jak10_stat.tsv')
+```
+
+```{r}
 #Fig5A
 jaki <- read_tsv('cci_jak10_stat.tsv') |> dplyr::rename(JAK1 = jk1, JAK2 = jk2, JAK3 = jk3, TYK2 = tk2)
 jak_usage<-jaki |> select(source, target,jaks) |> group_by(jaks) |> tally()
@@ -747,7 +808,7 @@ jakrew
 
 ```{r}
 library(ggpubr)
-# OT data downloaded from website
+# OpenTargets data downloaded from website, i.e.: https://platform.opentargets.org/disease/EFO_0000729/classic-associations
 otnew <- read_tsv('T-EFO_0000729-associated-targets-01_02_2024-v23_12.tsv') |> select(symbol, globalScore, maxClinicalTrialPhase)
 otnew <- otnew |> mutate(maxClinicalTrialPhase = case_when(
   maxClinicalTrialPhase == 1 ~ 'IV',
@@ -854,6 +915,7 @@ celltypes<-list(inflamed_naive = celltypenaive, inflamed_treated = ct, healthy =
 ggVennDiagram(celltypes)+ scale_fill_distiller(palette = "YlGn", direction = 1)+ guides(fill=guide_legend(title="Overlapping cell types"))
 
 ```
+
 ```{r}
 autocrine_signalling_ratio <- function(instate){
 cellcompint_uc_h <- cellcompint |>filter(state == paste0(instate))
@@ -887,11 +949,14 @@ autocrine<-rbind(autocrine_naive, autocrine_inflamed, autocrine_noninflamed, aut
 
 autocrine_ridge<-ggplot(autocrine, aes(x = autocrine_count....count , y = state)) +
   geom_density_ridges(aes(fill=state), stat = "binline", binwidth = 1, scale = 0.95) + 
-  scale_y_discrete(expand = c(0, 0)) +     # will generally have to set the `expand` option
-  scale_x_continuous(expand = c(0, 0)) +   # for both axes to remove unneeded padding
-  coord_cartesian(clip = "off") + # to avoid clipping of the very top of the top ridgeline
+  scale_y_discrete(expand = c(0, 0)) +     
+  scale_x_continuous(expand = c(0, 0)) +   
+  coord_cartesian(clip = "off") + 
   theme_ridges(grid = FALSE)+xlab('Overlapping source and target cell types in cytokine-cytokine interactions')
 autocrine_ridge
-
+# ratios, interactions with 0 overlap (i.e. no autocrine signal):
+# naive = 141/443 = 0.31 == 69
+# treated = 107/321 = 0.33 == 67
+# noninflamed_treated = 115/358=0.32 == 68
+# healthy = 102/376 = 0.27 == 73
 ```
-
