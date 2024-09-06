@@ -573,69 +573,101 @@ rewdist
 
 ```{r}
 # load nichenet model
-ligand_target_matrix <- readRDS("ligand_target_matrix_nsga2r_final.rds")
-weighted_networks <- readRDS("rds/weighted_networks_nsga2r_final.rds")
-ligand_tf_matrix <- readRDS("ligand_tf_matrix_nsga2r_final.rds")
-# nichenet interactions from omnipath
-networks <- readRDS("OP_nichenet_networks.RDS")
+ligand_target_matrix <- readRDS("../rds/ligand_target_matrix_nsga2r_final.rds")
+weighted_networks <- readRDS("../rds/weighted_networks_nsga2r_final.rds")
+ligand_tf_matrix <- readRDS("../rds/ligand_tf_matrix_nsga2r_final.rds")
+networks <- readRDS("../rds/OP_nichenet_networks.RDS")
 lr_network <- networks$lr_network %>% dplyr::filter(from %in% colnames(ligand_target_matrix))
 lr_network <- dplyr::rename(lr_network, ligand = from, receptor = to)
 sig_network <- networks$signaling_network
 gr_network <- networks$gr_network
+
+#seurat obj of the inflamed naive scRNA-Seq data
+naiverds <- readRDS('../rds/uc_inflamed_naive.rds')
+Idents(naiverds)<-'minor_cluster'
+
 ## geneset of interest == cytokines
+comp<-readRDS('../rds/cci_n.rds') |> bind_rows()  
 geneset_oi <-  c(comp$source, comp$target) |> unique()
-testcci <- comp |>
-  dplyr::filter(state == "UC_inflamed_naive")
 
-results <- list()
-for (row in 1:nrow(testcci)){
-src <- testcci[row, 'source']
-trg <- testcci[row, 'target']
+testcci<-comp |> filter(state == 'UC_inflamed_naive')
 
-ligands_all <- src 
-targets_all <- c(paste0(trg))
+jakcci<- testcci |> separate_rows(cells, sep = ',') |> separate(cells, into=c('source_cell','target_cell'), sep=':') |> 
+  select(source,target,target_cell) |> distinct()
 
-active_signaling_network <- get_ligand_signaling_path(
-  ligand_tf_matrix = ligand_tf_matrix,
-  ligands_all = ligands_all,
-  targets_all = targets_all,
-  weighted_networks = weighted_networks,
-  top_n_regulators = 10
-)
+#target celltypes
+target_celltypes <- jakcci$target_cell |> unique()
 
-el <- rbind(active_signaling_network$sig, active_signaling_network$gr) |> dplyr::select(from, to) |> distinct()
+# listing expressed genes for every celltype to speed up analysis down the line
+genelist <- list()
 
-jk1 <- ('JAK1' %in% el$from | 'JAK1' %in% el$to) |> as.logical() |> as.integer()
-jk2 <- ('JAK2' %in% el$from | 'JAK2' %in% el$to) |> as.logical() |> as.integer()
-jk3 <- ('JAK3' %in% el$from | 'JAK3' %in% el$to) |> as.logical() |> as.integer()
-tk2 <- ('TYK2' %in% el$from | 'TYK2' %in% el$to) |> as.logical() |> as.integer()
-jk1 <- ('JAK1' %in% el$from | 'JAK1' %in% el$to) |> as.logical() |> as.integer()
-jk2 <- ('JAK2' %in% el$from | 'JAK2' %in% el$to) |> as.logical() |> as.integer()
-jk3 <- ('JAK3' %in% el$from | 'JAK3' %in% el$to) |> as.logical() |> as.integer()
-tk2 <- ('TYK2' %in% el$from | 'TYK2' %in% el$to) |> as.logical() |> as.integer()
-#STAT1, STAT2, STAT3, STAT4, STAT5A, STAT5B and STAT6
-st1<- ('STAT1' %in% el$from | 'STAT1' %in% el$to) |> as.logical() |> as.integer()
-st2<- ('STAT2' %in% el$from | 'STAT2' %in% el$to) |> as.logical() |> as.integer()
-st3<- ('STAT3' %in% el$from | 'STAT3' %in% el$to) |> as.logical() |> as.integer()
-st4<- ('STAT4' %in% el$from | 'STAT4' %in% el$to) |> as.logical() |> as.integer()
-st5a<- ('STAT5a' %in% el$from | 'STAT5a' %in% el$to) |> as.logical() |> as.integer()
-st5b<- ('STAT5b' %in% el$from | 'STAT5b' %in% el$to) |> as.logical() |> as.integer()
-st6<- ('STAT6' %in% el$from | 'STAT6' %in% el$to) |> as.logical() |> as.integer()
-
-outdf <- data.frame(src,trg,jk1,jk2,jk3,tk2,st1,st2,st3,st4,st5a,st5b,st6) |> tibble()
-results[[paste0(src, '_',trg)]] <- outdf
+for (j in target_celltypes){
+  df <- get_expressed_genes(celltype_oi = paste0(j), naiverds)
+  genelist[[paste0(j)]]<-df
 }
 
-jaknet<-bind_rows(results)
-jaknet$jaks <- rowSums( jaknet[,3:6] )
+results <- list()
+for (row in 1:nrow(jakcci)){
+  src <- jakcci[row, 'source']
+  trg <- jakcci[row, 'target']
+  tc <- jakcci[row, 'target_cell']
+  expgenes_in_cells <- genelist[paste0(tc)] |> unlist() |> unique()
+  expgenes_in_cells <- c(expgenes_in_cells, src, trg)
+  #filtering weighted network for expressed genes
+  wn2 <- list()
+  wn2$lr_sig <- weighted_networks$lr_sig |> filter(from %in% expgenes_in_cells & to %in% expgenes_in_cells)
+  wn2$gr <- weighted_networks$gr |> filter(from %in% expgenes_in_cells & to %in% expgenes_in_cells)
+  
+  ligands_all <- src 
+  targets_all <- c(paste0(trg))
+  
+  active_signaling_network <- get_ligand_signaling_path(
+    ligand_tf_matrix = ligand_tf_matrix,
+    ligands_all = ligands_all,
+    targets_all = targets_all,
+    weighted_networks = wn2,
+    top_n_regulators = 10
+  )
+  
+  el <- rbind(active_signaling_network$sig, active_signaling_network$gr) |> dplyr::select(from, to) |> distinct()
+  
+  jk1 <- ('JAK1' %in% el$from | 'JAK1' %in% el$to) |> as.logical() |> as.integer()
+  jk2 <- ('JAK2' %in% el$from | 'JAK2' %in% el$to) |> as.logical() |> as.integer()
+  jk3 <- ('JAK3' %in% el$from | 'JAK3' %in% el$to) |> as.logical() |> as.integer()
+  tk2 <- ('TYK2' %in% el$from | 'TYK2' %in% el$to) |> as.logical() |> as.integer()
+  
+  outdf <- data.frame(src,trg,jk1,jk2,jk3,tk2) |> tibble()
+  results[[paste0(src, '_',trg,'_',tc)]] <- outdf
+  
+}
+# per cell data
+expjak_cell <- bind_rows(results, .id='id')
+expjak_cell$jaks <- rowSums( expjak_cell[,4:7] )
+expjak_cell<-expjak_cell |> separate(id, into = c('s','t','cell'), sep='_', extra = 'merge') |> select(-s,-t)
 
-write_tsv(jaknet, 'cci_jak10_stat.tsv')
+# interactions collapsed for each celltype + presence/absence
+per_cell<-expjak_cell |> group_by(source,target,jk1,jk2,jk3,tk2) |> summarise(celltype = paste(cell, collapse=','), n=n())
+per_cell$jaks <- rowSums( per_cell[,3:6] )
+
+# keeping only JAK interactions, listing affected celltypes
+per_system<-per_cell |> filter(jaks > 0)
+uc_jaks<-per_system |> group_by(source,target) |> summarise(jk1=sum(jk1), jk2=sum(jk2), jk3=sum(jk3), tk2=sum(tk2), cells = paste(celltype, collapse = ','))|>  mutate(
+  jk1 = ifelse(jk1 > 0, 1, 0),
+  jk2 = ifelse(jk2 > 0, 1, 0),
+  jk3 = ifelse(jk3 > 0, 1, 0),
+  tk2 = ifelse(tk2 > 0, 1, 0)
+)
+
+uc_jaks$jaks <- rowSums( uc_jaks[,3:6] )
+
+uc_jaks<-uc_jaks|> dplyr::rename(JAK1 = jk1, JAK2 = jk2, JAK3 = jk3, TYK2 = tk2)
+
 ```
 
 ```{r}
-#Fig5A
-jaki <- read_tsv('cci_jak10_stat.tsv') |> dplyr::rename(JAK1 = jk1, JAK2 = jk2, JAK3 = jk3, TYK2 = tk2)
-jak_usage<-jaki |> select(source, target,jaks) |> group_by(jaks) |> tally()
+#Fig5A,5B
+
+jak_usage<-uc_jaks |> select(source, target,jaks) |> group_by(jaks) |> tally()
 jak_usage_plot<-ggplot(jak_usage, aes(x=jaks, y=n)) + 
   geom_bar(stat = "identity", fill='lightblue')+
   theme_hc(base_size = 16)+
@@ -645,24 +677,25 @@ jak_usage_plot<-ggplot(jak_usage, aes(x=jaks, y=n)) +
   xlab('Number of potential JAK proteins used in the interaction')+
   theme(plot.margin = margin(1,1,1.5,1.2, "cm"))
 jak_usage_plot
+ggsave(jak_usage_plot, file='jak_usage_plot.png', dpi=600, width = 8, height = 8)
 
-jakil<-jaki |> pivot_longer(cols = JAK1:TYK2, names_to = 'jak', values_to = 'presence')
+jakil<-uc_jaks |> pivot_longer(cols = JAK1:TYK2, names_to = 'jak', values_to = 'presence')
 jak_protein_usage<-jakil |> filter(presence >0) |> group_by(jaks, jak) |> tally()
 
 jak_protein_usage_plot<-ggplot(jak_protein_usage, aes(x=jaks, y=n, fill=jak)) + 
   geom_bar(stat = "identity", position='fill')+
   theme_hc(base_size = 16)+
-  scale_fill_manual(values = c('JAK1'='#e1f7d5', 'JAK2'='#f6a6b2', 'JAK3'='#f7c297', 'TYK2'='#eecbff'))+  coord_flip()+
+  #scale_fill_manual(values = c('JAK1'='#e1f7d5', 'JAK2'='#f6a6b2', 'JAK3'='#f7c297', 'TYK2'='#eecbff'))+  
+  scale_fill_manual(values = c('#eecbff','#f7c297','#f6a6b2','#e1f7d5') ,limits=c('TYK2','JAK3','JAK2','JAK1') )+  
+  #scale_fill_manual(values = c('JAK1'='#eecbff', 'JAK2'='#f7c297', 'JAK3'='#f6a6b2', 'TYK2'='#e1f7d5'))+  
   coord_flip()+
   scale_x_reverse()+
   ylab('Ratio of JAK proteins')+
   theme(plot.margin = margin(1,1,1.5,1.2, "cm"))+
-  ylab('Number of JAK proteins')+ guides(fill=guide_legend(title="JAK"))
+  ylab('Ratio of JAK proteins')+ guides(fill=guide_legend(title="JAK"))
 jak_protein_usage_plot
-```
+ggsave(jak_protein_usage_plot, file='jak_protein_usage_plot.png', dpi=600, width = 8, height = 8)
 
-```{r}
-#Fig5B
 IL2_family_members<- c('IL2','IL7','IL15','TSLP')
 IL2_downstream_jaks <-c('JAK1','JAK3')
 IL6_family_members<- c('IL6','OSM')
@@ -689,12 +722,12 @@ jak_ratio_table <- function(i, jak_list){
     select(source,target) |> distinct() |>  filter(source == paste0(i)) |> nrow()
   
   valid_interactions <-  comp |> filter(state == 'UC_inflamed_naive'|state == 'UC_inflamed_treated'|state == 'UC_noninflamed_treated'|state == 'healthy') |> 
-  select(source,target) |> distinct() |>  filter(source == paste0(i))
+    select(source,target) |> distinct() |>  filter(source == paste0(i))
   
   any_jak <- jakil_UC_and_healthy |> right_join(valid_interactions) |> 
-  filter(presence ==1) |> 
-  select(source,target) |> distinct() |> nrow()
-    
+    filter(presence ==1) |> 
+    select(source,target) |> distinct() |> nrow()
+  
   correct_jak<-jakil_UC_and_healthy |> right_join(valid_interactions) |> 
     filter(presence ==1) |> 
     filter(jak %in% jak_list) |>
@@ -738,7 +771,7 @@ testlist <- list('IL2'=IL2_downstream_jaks,
                  'CSF2'=IL3_downstream_jaks,
                  'IL12A'=IL12_downstream_jaks,
                  'IL23A'=IL12_downstream_jaks
-                  )
+)
 
 jak_results <- list()
 for (i in seq_along(testlist)) {
@@ -746,7 +779,7 @@ for (i in seq_along(testlist)) {
   value <- testlist[[i]]
   out_table<-jak_ratio_table(key,value)
   jak_results[[paste0(key)]]<-out_table
-  }
+}
 
 results_table <- bind_rows(jak_results)
 
@@ -776,10 +809,30 @@ jaktable<-results_table_filtered |> rename_all(function(x) gsub("_", " ", x)) |>
   gt_plt_bar_pct("Percentage of interactions using correct JAK", labels = T, fill='#ADB828') |> 
   gt_plt_bar_pct("Percentage of JAK interactions using correct JAK", labels = T, fill = 'lightblue') 
 jaktable
+ggsave(jaktable, file='jaktable.png', dpi=600, width = 12, height = 8)
+
 ```
 
 ```{r}
 #Fig5C
+# rewiring files
+
+naive_int <- testcci |> ungroup() |> select(source,target)
+
+jak1i<-jakil |> filter(jak == 'JAK1' & presence == 1) |> ungroup() |> select(source,target)
+naive_jak1i<-naive_int |> anti_join(jak1i)
+jak2i<-jakil |> filter(jak == 'JAK2' & presence == 1) |> ungroup() |> select(source,target)
+naive_jak2i<-naive_int |> anti_join(jak2i)
+jak3i<-jakil |> filter(jak == 'JAK3' & presence == 1) |> ungroup() |> select(source,target)
+naive_jak3i<-naive_int |> anti_join(jak3i)
+tyk2i<-jakil |> filter(jak == 'TYK2' & presence == 1) |> ungroup() |> select(source,target)
+naive_tyk2i<-naive_int |> anti_join(tyk2i)
+write_tsv(naive_int, 'inflamed_naive_network.tsv')
+write_tsv(naive_jak1i, 'inflamed_naive_network_jak1i.tsv')
+write_tsv(naive_jak2i, 'inflamed_naive_network_jak2i.tsv')
+write_tsv(naive_jak3i, 'inflamed_naive_network_jak3i.tsv')
+write_tsv(naive_tyk2i, 'inflamed_naive_network_tyk2i.tsv')
+
 #rewiring values calculated in cytoscape following the removal of interactions from the UC naive network predicted to be signalling through each JAK paralogue 
 
 rew_jk1 <- read_csv('jak1_rewiring.csv')|> dplyr::select(name, `DyNet Rewiring (Dn-score)`, `Edge Count`) |> dplyr::rename(Dn = `DyNet Rewiring (Dn-score)`, degree = `Edge Count`)
