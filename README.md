@@ -27,5 +27,5 @@ Brief description of main data processing scripts:
 The networks can interactively accessed on the NDEx platform:
 - [Healthy](https://www.ndexbio.org/viewer/networks/bbb88388-7054-11ef-ac94-005056ae3c32)
 - [UC inflamed treatment naive](https://www.ndexbio.org/viewer/networks/f2efcc5a-7054-11ef-ac94-005056ae3c32)
-- [UC inflamed treatment exposed])(https://www.ndexbio.org/viewer/networks/0a6448cd-7055-11ef-ac94-005056ae3c32)
+- [UC inflamed treatment exposed](https://www.ndexbio.org/viewer/networks/0a6448cd-7055-11ef-ac94-005056ae3c32)
 - [UC noninflamed treatment exposed](https://www.ndexbio.org/viewer/networks/326d75df-7055-11ef-ac94-005056ae3c32)
