@@ -1,7 +1,7 @@
 # Cytokine Networks Reveal Pathogenic Mechanisms and Therapeutic Targets in Ulcerative Colitis
 
 This repository contains the necessary scripts to replicate the analysis detailed in Olbei et al.:
-- Olbei M., Hautefort I., Thomas P. J., Csabai L., Bohar B., Ibraheim H., Saifuddin A., Cozzetto D., Modos D., Powell N., Korcsmaros T.
+- Olbei M., Hautefort I., Thomas P. J., Csabai L., Bohar B., Koigi S. S., Ibraheim H., Saifuddin A., Coman D., Kromann H. E., Neves F. J., Papp D.,Powell N., Modos D., Korcsmaros T.
 
 The `codes` folder contains two subdirectories: `codes/ data_processing` refers to scripts handling the scRNA-Seq data and generation of the cytokine networks, while `codes/ figures` contains an Rmarkdown notebook detailing how to generate the figures shown in the manuscript.
 
