@@ -1,7 +1,7 @@
 # Cytokine Networks Reveal Pathogenic Mechanisms and Therapeutic Targets in Ulcerative Colitis
 
 This repository contains the necessary scripts to replicate the analysis detailed in Olbei et al.:
-- Olbei M., Hautefort I., Thomas P. J., Csabai L., Bohar B., Ibraheim H., Saifuddin A., Cozzetto D., Modos D., Powell N., Korcsmaros T.
+- Olbei M., Hautefort I., Thomas P. J., Csabai L., Bohar B., Koigi S. S., Ibraheim H., Saifuddin A., Coman D., Kromann H. E., Neves F. J., Papp D.,Powell N., Modos D., Korcsmaros T.
 
 The `codes` folder contains two subdirectories: `codes/ data_processing` refers to scripts handling the scRNA-Seq data and generation of the cytokine networks, while `codes/ figures` contains an Rmarkdown notebook detailing how to generate the figures shown in the manuscript.
 
@@ -24,7 +24,7 @@ Brief description of main data processing scripts:
 - **Output**: Validated cytokine networks
 
 ## Acessing networks
-The networks can interactively accessed on the NDEx platform:
+The networks can be interactively accessed on the NDEx platform:
 - [Healthy](https://www.ndexbio.org/viewer/networks/bbb88388-7054-11ef-ac94-005056ae3c32)
 - [UC inflamed treatment naive](https://www.ndexbio.org/viewer/networks/f2efcc5a-7054-11ef-ac94-005056ae3c32)
 - [UC inflamed treatment exposed](https://www.ndexbio.org/viewer/networks/0a6448cd-7055-11ef-ac94-005056ae3c32)
