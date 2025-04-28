@@ -173,18 +173,17 @@ ggplot(sigres_name_fix,aes(x=cytokine, y=factor(disease_state, level = state_ord
 ```
 
 ```{r, echo=FALSE}
-# Figure 2B: organoid comparison
-all_celltypes<- c(inf$source_cell, inf$target_cell) |> unique()
-organoid_celltypes <- c('Goblet', 'Enterocyte', 'Cycling TA', 'TA', 'Enteroendocrine', "Adult colonocyte", "Pediatric colonocyte", "BEST4+ epithelial")
-
+# Figure 2B: organoid comparison (method used in preprint - kept here for posterity)
 inf<-comp |> dplyr::filter(state == 'UC_inflamed_treated') |> 
   separate_rows(cells, sep = ",") |>
   separate(cells, sep = ":", into = c("source_cell", "target_cell"))
-organoid_inf<- inf |> dplyr::filter(target_cell %in% organoid_celltypes) |> dplyr::filter( source == 'TNF') |> group_by(target,target_cell) |> tally()
+all_celltypes<- c(inf$source_cell, inf$target_cell) |> unique()
+organoid_celltypes <- c('Goblet', 'Enterocyte', 'Cycling TA', 'TA', 'Enteroendocrine', "Adult colonocyte", "Pediatric colonocyte", "BEST4+ epithelial")
+organoid_inf<- inf |> dplyr::filter(target_cell %in% organoid_celltypes) |> dplyr::filter( source == 'IFNG') |> group_by(target,target_cell) |> tally()
 ifngTargets<-organoid_inf |> pull(target) |> unique()
 df <- read_csv('Condition_Inflamed non-treated_Inflamed treated with IFNg_sig_genes.csv')
 ids <- clusterProfiler::bitr(df$gene, fromType="ENSEMBL", toType="SYMBOL", OrgDb="org.Hs.eg.db")
-dfGn <- df |> left_join(ids, by=c('gene'='ENSEMBL'))|> dplyr::filter(SYMBOL %in% allcyt) |> dplyr::filter(abs(log2FoldChange) >= 2) |> dplyr::filter(SYMBOL %in% allcyt)
+dfGn <- df |> left_join(ids, by=c('gene'='ENSEMBL'))|> dplyr::filter(SYMBOL %in% cklcyts) |> dplyr::filter(abs(log2FoldChange) >= 2) |> dplyr::filter(SYMBOL %in% cklcyts)
 cklOrganoidOverlap <- dfGn |> dplyr::filter(SYMBOL %in% ifngTargets)
 
 noninf <-comp |> dplyr::filter(state == 'UC_noninflamed_treated') |> 
@@ -216,6 +215,212 @@ p_value <- phyper(q, m, n, k, lower.tail = F) # 0.0004
 bothSets <- union(dfGn2$SYMBOL, ifngTargets_noninf)
 overlap <- intersect(dfGn2$SYMBOL, ifngTargets_noninf)
 jaccard <- length(overlap) / length(bothSets) #0.13
+```
+
+```{r, echo=FALSE}
+# NEW: Figure 2B, 2C, GSEA of cytokine targets in transcriptomics data
+library(fgsea)
+# load networks
+
+comp <- readRDS("cci_n.rds") |> bind_rows()
+allcyt <- c(comp$source, comp$target) |> unique()
+organoid_celltypes <- c("Goblet", "Enterocyte", "Cycling TA", "TA", "Enteroendocrine", "Adult colonocyte", "Pediatric colonocyte", "BEST4+ epithelial")
+# filter networks to organoid celltypes
+healthy <- comp |>
+  dplyr::filter(state == "healthy") |>
+  separate_rows(cells, sep = ",") |>
+  separate(cells, sep = ":", into = c("source_cell", "target_cell"))
+noninf <- comp |>
+  dplyr::filter(state == "UC_noninflamed_treated") |>
+  separate_rows(cells, sep = ",") |>
+  separate(cells, sep = ":", into = c("source_cell", "target_cell"))
+
+inf <- comp |>
+  dplyr::filter(state == "UC_inflamed_treated") |>
+  separate_rows(cells, sep = ",") |>
+  separate(cells, sep = ":", into = c("source_cell", "target_cell"))
+
+naive <- comp |>
+  dplyr::filter(state == "UC_inflamed_naive") |>
+  separate_rows(cells, sep = ",") |>
+  separate(cells, sep = ":", into = c("source_cell", "target_cell"))
+
+# pull out state-specific IFNG targets
+ifngTargets_inf <- inf |>
+  dplyr::filter(target_cell %in% organoid_celltypes) |>
+  dplyr::filter(source == "IFNG") |>
+  group_by(target, target_cell) |>
+  tally() |>
+  pull(target) |>
+  unique()
+ifngTargets_noninf <- noninf |>
+  dplyr::filter(target_cell %in% organoid_celltypes & source == "IFNG") |>
+  group_by(target, target_cell) |>
+  tally() |>
+  pull(target) |>
+  unique()
+
+ifngTargets_naive <- naive |>
+  dplyr::filter(target_cell %in% organoid_celltypes) |>
+  dplyr::filter(source == "IFNG") |>
+  group_by(target, target_cell) |>
+  tally() |>
+  pull(target) |>
+  unique()
+
+ifngTargets_healthy <- healthy |>
+  dplyr::filter(target_cell %in% organoid_celltypes) |>
+  dplyr::filter(source == "IFNG") |>
+  group_by(target, target_cell) |>
+  tally() |>
+  pull(target) |>
+  unique()
+# other cytokine targets to be validated with Pavlidis et al data
+tnfTargets <- healthy |>
+  dplyr::filter(target_cell %in% organoid_celltypes) |>
+  dplyr::filter(source == "TNF") |>
+  group_by(target, target_cell) |>
+  tally() |>
+  pull(target) |>
+  unique()
+
+il17Targets <- healthy |>
+  dplyr::filter(target_cell %in% organoid_celltypes) |>
+  dplyr::filter(source == "IL17A") |>
+  group_by(target, target_cell) |>
+  tally() |>
+  pull(target) |>
+  unique()
+
+# load transcriptomics data and map it,
+# create Wald stat for GSEA,
+# for the UC organoid datasets multiply it by -1 to match contrast with the other datasets
+# and finally format it for fgsea
+dfUCinf <- read_csv("Condition_Inflamed non-treated_Inflamed treated with IFNg_all_genes.csv")
+dfUCninf <- read_csv("Condition_Non-inflamed non-treated_Non-inflamed treated with  IFNg_all_genes.csv")
+ids <- clusterProfiler::bitr(dfUCinf$gene, fromType = "ENSEMBL", toType = "SYMBOL", OrgDb = "org.Hs.eg.db")
+# inflamed mapped to GS
+UC_organoid_inflamed <- dfUCinf |>
+  left_join(ids, by = c("gene" = "ENSEMBL")) |>
+  drop_na() |>
+  mutate(stat = log2FoldChange / lfcSE * -1) |>
+  dplyr::select(SYMBOL, stat) |>
+  na.omit() |>
+  distinct() |>
+  group_by(SYMBOL) |>
+  summarize(stat = mean(stat)) |>
+  deframe()
+# noninflamed mapped to GS
+ids2 <- clusterProfiler::bitr(dfUCninf$gene, fromType = "ENSEMBL", toType = "SYMBOL", OrgDb = "org.Hs.eg.db")
+UC_organoid_noninflamed <- dfUCninf |>
+  left_join(ids2, by = c("gene" = "ENSEMBL")) |>
+  drop_na() |>
+  mutate(stat = log2FoldChange / lfcSE * -1) |>
+  dplyr::select(SYMBOL, stat) |>
+  na.omit() |>
+  distinct() |>
+  group_by(SYMBOL) |>
+  summarize(stat = mean(stat)) |>
+  deframe()
+# load Pavlidis perturbation datasets
+# data was generated using GEO2R with default settings from GSE190634
+# please see corresponding GEO2R R scripts
+Pavlidis_IFNG <- read_tsv("IFNG.tsv") |>
+  dplyr::select(Symbol, stat) |>
+  na.omit() |>
+  distinct() |>
+  group_by(Symbol) |>
+  summarize(stat = mean(stat)) |>
+  deframe()
+Pavlidis_TNF <- read_tsv("TNF.tsv") |>
+  dplyr::select(Symbol, stat) |>
+  na.omit() |>
+  distinct() |>
+  group_by(Symbol) |>
+  summarize(stat = mean(stat)) |>
+  deframe()
+Pavlidis_IL17 <- read_tsv("IL17.tsv") |>
+  dplyr::select(Symbol, stat) |>
+  na.omit() |>
+  distinct() |>
+  group_by(Symbol) |>
+  summarize(stat = mean(stat)) |>
+  deframe()
+
+# create custom pathways
+predicted_cytokine_targets_IFNG_inflamed_treated <- list(IFNG_inflamed_treated_targets = ifngTargets_inf)
+predicted_cytokine_targets_IFNG_noninflamed_treated <- list(IFNG_noninflamed_treated_targets = ifngTargets_noninf)
+predicted_cytokine_targets_IFNG_inflamed_naive <- list(IFNG_inflamed_naive_targets = ifngTargets_naive)
+predicted_cytokine_targets_IFNG_healthy <- list(IFNG_healthy_targets = ifngTargets_healthy)
+predicted_cytokine_targets_TNF_healthy <- list(TNF_healthy_targets = tnfTargets)
+predicted_cytokine_targets_IL17_healthy <- list(IL17_healthy_targets = il17Targets)
+
+# fgsea analyses
+ifng_inf <- fgsea(pathways = predicted_cytokine_targets_IFNG_inflamed_treated, stats = UC_organoid_inflamed, nperm = 1000)
+ifng_naive <- fgsea(pathways = predicted_cytokine_targets_IFNG_inflamed_naive, stats = UC_organoid_inflamed, nperm = 1000)
+ifng_ninf <- fgsea(pathways = predicted_cytokine_targets_IFNG_noninflamed_treated, stats = UC_organoid_noninflamed, nperm = 1000)
+ifng_healthy <- fgsea(pathways = predicted_cytokine_targets_IFNG_healthy, stats = Pavlidis_IFNG, nperm = 1000)
+tnf_healthy <- fgsea(pathways = predicted_cytokine_targets_TNF_healthy, stats = Pavlidis_TNF, nperm = 1000)
+il17_healthy <- fgsea(pathways = predicted_cytokine_targets_IL17_healthy, stats = Pavlidis_IL17, nperm = 1000)
+
+gsea_results <- rbind(ifng_inf, ifng_naive, ifng_ninf, ifng_healthy, tnf_healthy, il17_healthy)
+# add organoid annotation
+gsea_results <- gsea_results |>
+  mutate(comparison = case_when(
+    pathway == "IFNG_noninflamed_treated_targets" ~ "UC noninflamed colonic organoid",
+    pathway == "IFNG_inflamed_treated_targets" ~ "UC inflamed colonic organoid",
+    pathway == "IFNG_inflamed_naive_targets" ~ "UC inflamed colonic organoid",
+    TRUE ~ as.character("Healthy colonic organoid")
+  )) |>
+  mutate(padjlog = -log10(padj))
+
+gsea_summary_plot <- gsea_results |> ggplot(aes(y = reorder(pathway, padjlog), x = padjlog, fill = NES)) +
+  # scale_x_reverse()+
+  geom_point(aes(shape = comparison), size = 7, color = "black") +
+  scale_shape_manual(values = c("UC noninflamed colonic organoid" = 21, "UC inflamed colonic organoid" = 22, "Healthy colonic organoid" = 23)) +
+  scale_fill_distiller(palette = "Reds", direction = 1, breaks = c(0, 1.25, 2.5), labels = c(0, 1.25, 2.5), limits = c(0, 2.5)) +
+  xlim(0, 3) +
+  xlab("-log10(adjusted p-value)") +
+  ylab("Predicted cytokine target set") +
+  theme_hc(base_size = 18) +
+  guides(shape = guide_legend(nrow = 3))
+gsea_summary_plot
+ggsave(gsea_summary_plot, file = "~/Documents/Projects/CKL2/nichenet/scIBD/scripts/gsea_summary.svg", width = 11, height = 8, dpi = 600)
+
+pd <- plotEnrichmentData(predicted_cytokine_targets_IFNG_inflamed_treated[["IFNG_inflamed_treated_targets"]], UC_organoid_inflamed) 
+
+UC_org_IFNG_treated <- with(
+  pd,
+  ggplot(data = curve) +
+    geom_line(aes(x = rank, y = ES), color = "darkorchid", size = 1.25) +
+    geom_ribbon(
+      data = stats,
+      mapping = aes(
+        x = rank, ymin = 0,
+        ymax = stat / maxAbsStat * (spreadES / 4)
+      ),
+      fill = "grey"
+    ) +
+    geom_segment(
+      data = ticks,
+      mapping = aes(
+        x = rank, y = -spreadES / 16,
+        xend = rank, yend = spreadES / 16
+      ),
+      size = 0.2
+    ) +
+    geom_hline(yintercept = posES, colour = "red", linetype = "dashed") +
+    geom_hline(yintercept = negES, colour = "red", linetype = "dashed") +
+    geom_hline(yintercept = 0, colour = "black") +
+    theme(
+      panel.background = element_blank(),
+      panel.grid.major = element_line(color = "grey92")
+    ) +
+    labs(x = "Rank (Wald statistic)", y = "Enrichment Score") +
+    theme_hc(base_size = 16)
+) + labs(title = c("Enrichment of IFNG target cytokines in UC inflamed organoid treated with IFNG"))
+UC_org_IFNG_treated
+ggsave(UC_org_IFNG_treated, file = "~/Documents/Projects/CKL2/nichenet/scIBD/scripts/UC_org_IFNG_treated.png", width = 12, height = 8, dpi = 600)
 ```
 
 
@@ -701,7 +906,7 @@ IL2_downstream_jaks <-c('JAK1','JAK3')
 IL6_family_members<- c('IL6','OSM')
 IL6_downstream_jaks <-c('JAK1','JAK2','TYK2')
 IFN_family_members <-c('IFNG')
-IFN_downstream_jaks <-c('JAK1','JAK2','TYK2')
+IFN_downstream_jaks <-c('JAK1','JAK2')
 IL10_family_members<- c('IL10')
 IL10_downstream_jaks <-c('JAK1','JAK2','TYK2')
 IL3_family_members<- c('CSF2')
@@ -858,7 +1063,7 @@ jakrew<-ggplot(rew_jak, aes(x = reorder(name, Dn), y = Dn, fill = state)) +
   theme_hc(base_size = 18)
 jakrew
 ```
-
+Supplementary Figure 6, Figure 6
 ```{r}
 library(ggpubr)
 # OpenTargets data downloaded from website, i.e.: https://platform.opentargets.org/disease/EFO_0000729/classic-associations
@@ -874,7 +1079,6 @@ otewnames <- otnew$symbol |> unique()
 
 df <- comp |> filter(state == 'UC_inflamed_naive') 
 
-#Supplementary Figure 3
 net_ot <- df |> as_tbl_graph() |>activate(nodes) |> left_join(otnew, by =c('name'='symbol')) |> mutate(maxClinicalTrialPhase = case_when(
   is.na(maxClinicalTrialPhase) ~ 'No data',
   TRUE ~ as.character(maxClinicalTrialPhase)
@@ -968,7 +1172,7 @@ celltypes<-list(inflamed_naive = celltypenaive, inflamed_treated = ct, healthy =
 ggVennDiagram(celltypes)+ scale_fill_distiller(palette = "YlGn", direction = 1)+ guides(fill=guide_legend(title="Overlapping cell types"))
 
 ```
-
+Supplementary Figure 4
 ```{r}
 autocrine_signalling_ratio <- function(instate){
 cellcompint_uc_h <- cellcompint |>filter(state == paste0(instate))
@@ -1013,3 +1217,202 @@ autocrine_ridge
 # noninflamed_treated = 115/358=0.32 == 68
 # healthy = 102/376 = 0.27 == 73
 ```
+Supplementary Table 2
+```{r}
+# reading shuffled network object - created in an identical way as the original networks, 
+# by running the pipeline on the sciBD object where the gene labels were shuffled
+# see shuffle_validation.R for further details
+shuffled <- readRDS("shuffled_network.rds") |>
+  mutate(state = stringr::str_replace_all(state, pattern = "_scibd_shuffled.tsv", replacement = "")) |>
+  mutate(state = case_when(
+    state == "uc_inflamed_naive" ~ "UC_inflamed_naive",
+    state == "uc_inflamed_treated" ~ "UC_inflamed_treated",
+    state == "uc_noninflamed_treated" ~ "UC_noninflamed_treated",
+    TRUE ~ as.character(state)
+  ))
+
+original <- readRDS("cci_n.rds")
+
+# function to compare networks state by state, and return 
+# test results, IQR ranges
+compare_shuffled <- function(instate) {
+  n1 <- shuffled |>
+    filter(state == paste0(instate)) |>
+    as_tbl_graph() |>
+    activate(nodes) |>
+    mutate(
+      degree = centrality_degree(mode = "all"),
+      betweenness = centrality_betweenness(directed = T)
+    ) |>
+    as_tibble()
+  n2 <- original |>
+    filter(state == paste0(instate)) |>
+    as_tbl_graph() |>
+    activate(nodes) |>
+    mutate(
+      degree = centrality_degree(mode = "all"),
+      betweenness = centrality_betweenness(directed = T)
+    ) |>
+    as_tibble()
+
+  n <- left_join(n1, n2, by = "name", suffix = c("_shuffled", "_original")) |> drop_na()
+  print("Wilcox-test degree distribution:")
+  print(wilcox.test(n$degree_shuffled, n$degree_original))
+  print("Wilcox-test betweenness distribution:")
+  print(wilcox.test(n$betweenness_shuffled, n$betweenness_original))
+  print("IQR:")
+  print(IQR(n$degree_original))
+  print(IQR(n$degree_shuffled))
+  print(IQR(n$betweenness_original))
+  print(IQR(n$betweenness_shuffled))
+  print("median:")
+  print(median(n$degree_original))
+  print(median(n$degree_shuffled))
+  print(median(n$betweenness_original))
+  print(median(n$betweenness_shuffled))
+  return(n)
+}
+h <- compare_shuffled("healthy")
+na <- compare_shuffled("UC_inflamed_naive")
+inf <- compare_shuffled("UC_inflamed_treated")
+ninf <- compare_shuffled("UC_noninflamed_treated")
+```
+Supplementary Figure 2 and 3
+
+```{r}
+library(readxl)
+# function to process files
+# input files are xlsx returned by biolegend's LEGENDplex Data Analysis Software Suite
+# mapping table to map cytokine names to gene symbols
+mapping <- rbind(df, data.frame(
+  cytokine = c("IL-1α (A5)", "IL-1β (A6)", "GM-CSF (A7)", "IL-18 (B5)",
+               "IP-10 (A5)", "TARC (A7)", "RANTES (A10)", "MIP-1α (B2)",
+               "MIP-3α (B5)", "GROα (B6)", "I-TAC (B7)", "MIP-1A (B2)",
+               "MIP-3A (B5)", "GROa (B6)", "CCL2 (MCP-1) (A5)",
+               "IL-6 (B2)", "β-NGF (B4)", "TNF-α (B6)"),
+  symbol = c("IL1A", "IL1B", "CSF2", "IL18", "CXCL10", "CCL17", "CCL5",
+             "CCL3", "CCL20", "CXCL1", "CXCL11", "CCL3", "CCL20",
+             "CXCL1", "CCL2", "IL6", "NGF", "TNF"),
+  stringsAsFactors = FALSE
+))
+
+
+# this first function generates the individual box plots 
+process_biolegend <- function(infile) {
+  df <- read_xlsx(paste0(infile), sheet = "predicted_conc")
+  df <- df |>
+    filter(grepl("Organoid", sample)) |>
+    pivot_longer(cols = 7:length(df)) |>
+    left_join(mapping, by = c("name" = "cytokine"))
+
+  cyts <- df |>
+    pull(symbol) |>
+    unique()
+  df2 <- df |>
+    mutate(
+      value = case_when(
+        str_starts(value, "<") ~ as.numeric(str_remove(value, "<")),
+        str_starts(value, ">") ~ as.numeric(str_remove(value, ">")),
+        TRUE ~ as.numeric(value)
+      )
+    ) |>
+    group_by(sample, symbol) |>
+    summarise(mean_pred_conc = mean(as.numeric(value)), n = n())
+  for (i in cyts) {
+    dfplot <- df2 |>
+      filter(symbol == paste0(i)) |>
+      mutate(sample = case_when(
+        grepl("Organoids only", sample) ~ "Organoids only",
+        TRUE ~ as.character("Organoids + ILC1s")
+      ))
+    my_comparisons <- list(c("Organoids only", "Organoids + ILC1s"))
+
+    plt <- ggboxplot(dfplot,
+      x = "sample", y = "mean_pred_conc",
+      add = "jitter", shape = "sample",
+      title = paste0(i), color = "sample",
+      palette = c("#E7B800", "#FC4E07")
+    ) +
+      stat_compare_means(comparisons = my_comparisons) + # Add pairwise comparisons p-value
+      stat_compare_means(label.y = 50)
+    ggsave(plt, file = paste0("plots/", infile, "_", i, ".png"), dpi = 600, height = 8, width = 8)
+  }
+}
+
+fls <- list.files(full.names = T, include.dirs = F, pattern = ".xlsx")
+for (j in fls) {
+  print(j)
+  process_biolegend(paste0(j))
+}
+
+# this function returns a tibble with the stats
+process_biolegend_stats <- function(infile) {
+  df <- read_xlsx(paste0(infile), sheet = "predicted_conc")
+  df <- df |>
+    filter(grepl("Organoid", sample)) |>
+    pivot_longer(cols = 7:length(df))
+
+  cyts <- df |>
+    pull(name) |>
+    unique()
+
+  df2 <- df |>
+    mutate(
+      value = case_when(
+        str_starts(value, "<") ~ as.numeric(str_remove(value, "<")) / 2,
+        str_starts(value, ">") ~ as.numeric(str_remove(value, ">")),
+        TRUE ~ as.numeric(value)
+      )
+    ) |>
+    group_by(sample, name) |>
+    summarise(mean_pred_conc = mean(as.numeric(value)), n = n())
+
+  res <- list()
+  for (i in cyts) {
+    dfplot <- df2 |>
+      filter(name == paste0(i)) |>
+      mutate(sample = case_when(
+        grepl("Organoids only", sample) ~ "Organoids only",
+        TRUE ~ as.character("Organoids + ILC1s")
+      ))
+
+    rs <- wilcox.test(dfplot$mean_pred_conc ~ dfplot$sample, exact = F)
+
+    out <- data.frame(
+      input = paste0(infile),
+      cytokine = paste0(i),
+      p_value = rs$p.value
+    )
+    res[[paste0(i)]] <- out
+  }
+  return(bind_rows(res))
+}
+
+fls <- list.files(full.names = T, include.dirs = F, pattern = ".xlsx")
+resstats <- list()
+for (j in fls) {
+  print(j)
+  dfres <- process_biolegend_stats(paste0(j))
+  resstats[[paste0(j)]] <- dfres
+}
+results <- bind_rows(resstats)
+results_mapped <- results |> left_join(mapping)
+# filter for neat dilution only
+results_neat <- results_mapped |>
+  filter(!grepl("Diluted|diluted", input))
+plt <- results_neat |>
+  filter(symbol != "IL18") |> # IL18 was not among targets
+  arrange(p_value) |>
+  ggplot(aes(x = p_value, y = reorder(symbol, p_value, decreasing = T))) +
+  geom_point() +
+  xlim(0, 1) +
+  geom_vline(xintercept = 0.05, color = "darkred", ) +
+  annotate(x = 0.05, y = +Inf, label = "0.05", vjust = 11.5, hjust = 0.5, geom = "label", color = "darkred") +
+  ylab("Cytokine") +
+  xlab("p-value") +
+  scale_x_continuous(expand = c(0.05, 0), limits = c(0, 0.4)) +
+  theme_hc(base_size = 14)
+plt
+```
+
+

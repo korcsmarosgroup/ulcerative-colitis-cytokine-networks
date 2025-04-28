@@ -45,3 +45,10 @@ saveRDS(ucn_no_naive, '../rds/uc_noninflamed_no_naive.rds')
 # healthy data
 h <- ucint |> tidyseurat::filter(disease == 'Healthy')
 saveRDS(h, '../rds/scibd_healthy.rds')
+
+
+# revision update:
+# filtering for small intestinal samples to run through the pipeline
+smallint_all <- adata |> filter(tissue == 'smallInt' & disease == 'Healthy')
+rm(df)
+saveRDS(smallint_all, 'smallint_all.RDS')
