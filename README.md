@@ -25,7 +25,7 @@ Brief description of main data processing scripts:
 
 ### `combine_networks.R`:
 - **Input**: Cytokine networks and validated cytokine networks
-- ***Task**: Combine previous results
+- **Task**: Combine previous results
 - **Output**: Validated cytokine networks including source and target cell types, weights (number of cellular interactions) and states (if any)
 
 ## Acessing networks
