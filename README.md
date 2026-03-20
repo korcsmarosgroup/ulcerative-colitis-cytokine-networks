@@ -23,6 +23,11 @@ Brief description of main data processing scripts:
 - **Task**: Nichenet's target prediction evaluation pipeline using a multi-ligand random forest model with cross validation. Target downstream cytokines from the gene set of interest are kept if they are well predicted in every cross-validation round
 - **Output**: Validated cytokine networks
 
+### `combine_networks.R`:
+- **Input**: Cytokine networks and validated cytokine networks
+- ***Task**: Combine previous results
+- **Output**: Validated cytokine networks including source and target cell types, weights (number of cellular interactions) and states (if any)
+
 ## Acessing networks
 The networks can be interactively accessed on the NDEx platform:
 - [Healthy](https://www.ndexbio.org/viewer/networks/bbb88388-7054-11ef-ac94-005056ae3c32)
