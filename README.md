@@ -5,6 +5,8 @@ This repository contains the necessary scripts to replicate the analysis detaile
 
 The `codes` folder contains two subdirectories: `codes/ data_processing` refers to scripts handling the scRNA-Seq data and generation of the cytokine networks, while `codes/ figures` contains an Rmarkdown notebook detailing how to generate the figures shown in the manuscript.
 
+For a more user friendly implementation of the pipeline please visit: https://github.com/korcsmarosgroup/CytokineLink_pipeline
+
 ## Data Processing
 Brief description of main data processing scripts:
 ### `process_scibd.R`: 
